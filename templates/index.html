@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>センサーデータ可視化システム</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: sans-serif; background-color: #f4f4f9; padding: 20px; color: #333; }
+        h1 { color: #2c3e50; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        
+        .chart-container { max-width: 900px; }
+        .chart-wrapper { position: relative; height: 400px; width: 100%; background-color: #fafafa; border: 1px dashed #ccc; border-radius: 6px; padding: 10px; box-sizing: border-box; }
+        .controls { margin-bottom: 15px; }
+        
+        .btn-toggle { background: #e0e0e0; color: #333; border: none; padding: 10px 15px; margin-right: 5px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn-toggle.active { color: white; font-weight: bold; }
+        #btn-temp.active { background: #ff4757; }
+        #btn-humi.active { background: #2ed573; }
+        #btn-co2.active { background: #ffa502; }
+        #btn-press.active { background: #1e90ff; }
+        #btn-force.active { background: #6c5ce7; }
+        
+        .search-box { width: 60%; padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 4px; }
+        .btn-search { background: #2ed573; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .btn-clear { background: #747d8c; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+
+        .action-btn { border: none; color: white; padding: 8px 14px; margin: 4px 2px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .btn-max { background: #ff4757; }
+        .btn-min { background: #1e90ff; }
+        .btn-first { background: #ffa502; }
+        .btn-last { background: #ffd32a; color: #333; }
+        
+        .sort-btn { border: none; color: white; padding: 8px 14px; margin: 4px 2px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .btn-s-desc { background: #9b59b6; }
+        .btn-s-asc { background: #ec407a; }
+        .btn-t-asc { background: #1abc9c; }
+        .btn-t-desc { background: #e67e22; }
+
+        .btn-download { border: none; color: white; padding: 10px 18px; margin-right: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .dl-csv { background: #007bff; }
+        .dl-json { background: #e91e63; }
+        .dl-xml { background: #00c853; }
+        
+        .btn-add-data { background: #e056fd; color: white; padding: 10px 22px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .input-value-box { padding: 9px; font-size: 14px; width: 150px; border: 1px solid #ccc; border-radius: 4px; margin-left: 10px; margin-right: 10px; }
+        .radio-label { font-size: 14px; margin-right: 12px; cursor: pointer; font-weight: bold; }
+
+        .manual-value-item { display: flex; align-items: center; background: #fff; border: 1px solid #fda7ff; border-radius: 6px; padding: 6px 10px; }
+        .manual-value-item label { font-size: 13px; font-weight: bold; margin-right: 8px; white-space: nowrap; }
+        .manual-value-item input { padding: 7px; font-size: 14px; width: 100px; border: 1px solid #ccc; border-radius: 4px; }
+        .manual-value-item input.input-error { border-color: #e74c3c; background: #fff5f5; box-shadow: 0 0 0 2px rgba(231,76,60,0.15); }
+        .manual-value-item .unit-label { font-size: 12px; color: #888; margin-left: 4px; }
+        .manual-value-empty { font-size: 13px; color: #999; }
+
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #2c3e50; color: white; }
+        .statistics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        .stat-card { padding: 14px; background: #f4f7fb; border-radius: 6px; line-height: 1.8; }
+        .threshold-controls, .column-controls, .pagination-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+        .freshness-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .threshold-controls input { width: 110px; padding: 7px; }
+        .column-controls label { white-space: nowrap; }
+
+        /* ===== 管理者モード関連 ===== */
+        .admin-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .admin-bar .admin-status { font-size: 13px; color: #747d8c; font-weight: bold; }
+        .btn-admin { background: #34495e; color: white; border: none; padding: 10px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; transition: background .2s; }
+        .btn-admin:hover { background: #2c3e50; }
+        .btn-admin.is-editing { background: #c0392b; }
+        .btn-admin.is-editing:hover { background: #922b21; }
+
+        .feature-block { position: relative; transition: opacity .2s ease; }
+        .feature-block.admin-dimmed { opacity: 0.4; }
+        .feature-block.user-hidden { display: none; }
+
+        .feature-close-btn, .feature-restore-btn {
+            position: absolute;
+            top: 10px;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            line-height: 30px;
+            text-align: center;
+            padding: 0;
+            z-index: 5;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+            display: none;
+        }
+        .feature-close-btn { left: 10px; background: #e74c3c; color: white; }
+        .feature-close-btn:hover { background: #c0392b; }
+        .feature-restore-btn { right: 10px; background: #2ecc71; color: white; }
+        .feature-restore-btn:hover { background: #27ae60; }
+
+        .feature-block.show-close-btn .feature-close-btn { display: block; }
+        .feature-block.show-restore-btn .feature-restore-btn { display: block; }
+
+        /* ===== 管理者専用：データの削除・編集ボタン ===== */
+        .btn-row-edit, .btn-row-delete { border: none; color: white; padding: 6px 10px; margin: 2px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        .btn-row-edit { background: #1e90ff; }
+        .btn-row-edit:hover { background: #1873cc; }
+        .btn-row-delete { background: #e74c3c; }
+        .btn-row-delete:hover { background: #c0392b; }
+
+        @media (max-width: 700px) {
+            body { padding: 12px; }
+            .card { padding: 14px; }
+            .chart-wrapper { height: 300px; }
+            .search-box { width: 100%; margin-bottom: 8px; }
+            .admin-bar { flex-wrap: wrap; }
+            .btn-download, .btn-search, .btn-clear { margin: 4px 2px; }
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📊 センサーデータダッシュボード</h1>
+
+    <div class="admin-bar">
+        <span class="admin-status" id="adminStatusLabel"></span>
+        <button class="btn-admin" id="adminLogoutBtn" onclick="handleAdminLogoutClick()" style="display:none; background:#95a5a6;">🚪 ログアウト</button>
+        <button class="btn-admin" id="adminToggleBtn" onclick="handleAdminButtonClick()" style="display:none;">🔐 管理者ボタン</button>
+    </div>
+
+    <div class="feature-block" data-feature="manual" id="feature-manual">
+        <button class="feature-close-btn" onclick="hideFeature('manual')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('manual')" title="この機能を復活させる">○</button>
+    <div class="card" style="background-color: #fff2fc; border: 1px solid #fda7ff;">
+        <h3>🧪 テスト用データ手動入力（選んだ分野以外は自動でnullになります）</h3>
+        <div style="margin-bottom: 15px;">
+            <strong>① 対象デバイス:</strong> <span style="font-size: 15px; font-weight: bold; color: #2c3e50; margin-left: 5px;">🛠️ 手動テスト端末 固定</span>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <strong>② 入力する分野を選択（複数選択可）:</strong><br><br>
+            <label class="radio-label"><input type="checkbox" class="manualFieldCheck" value="temp" data-label="🌡️ 温度" data-unit="℃" checked> 🌡️ 温度</label>
+            <label class="radio-label"><input type="checkbox" class="manualFieldCheck" value="humi" data-label="💧 湿度" data-unit="%"> 💧 湿度</label>
+            <label class="radio-label"><input type="checkbox" class="manualFieldCheck" value="co2" data-label="💨 CO2" data-unit="ppm"> 💨 CO2</label>
+            <label class="radio-label"><input type="checkbox" class="manualFieldCheck" value="press" data-label="🛰️ 気圧" data-unit="hPa"> 🛰️ 気圧</label>
+            <label class="radio-label"><input type="checkbox" class="manualFieldCheck" value="force" data-label="⚖️ 感圧" data-unit=""> ⚖️ 感圧</label>
+        </div>
+        <div>
+            <strong>③ 数値を入力:</strong>
+            <div id="manualValueInputsContainer" style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;"></div>
+            <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px;">
+                <label>記録者 <input id="manualRecordedBy" type="text" maxlength="255" placeholder="任意"></label>
+                <label>メモ <input id="manualNote" type="text" maxlength="1000" placeholder="任意"></label>
+            </div>
+            <button class="btn-add-data" onclick="submitManualData()" style="margin-top: 12px;">➕ データを追加＆転送</button>
+        </div>
+    </div>
+    </div>
+
+    <div class="feature-block" data-feature="graph" id="feature-graph">
+        <button class="feature-close-btn" onclick="hideFeature('graph')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('graph')" title="この機能を復活させる">○</button>
+    <div class="card chart-container">
+        <h3>📈 時系列グラフ表示（表示切り替え可）</h3>
+        <div class="controls">
+            <button class="btn-toggle" id="btn-temp" onclick="toggleDataset('temp')">🌡️ 温度</button>
+            <button class="btn-toggle" id="btn-humi" onclick="toggleDataset('humi')">💧 湿度</button>
+            <button class="btn-toggle" id="btn-co2" onclick="toggleDataset('co2')">💨 CO2</button>
+            <button class="btn-toggle" id="btn-press" onclick="toggleDataset('press')">🛰️ 気圧</button>
+            <button class="btn-toggle" id="btn-force" onclick="toggleDataset('force')">⚖️ 感圧</button>
+        </div>
+        <label for="graphRangeSelect">表示期間:</label>
+        <select id="graphRangeSelect" onchange="setGraphRange(this.value)">
+            <option value="all">全期間</option>
+            <option value="1">直近1時間</option>
+            <option value="24">直近24時間</option>
+            <option value="168">直近7日間</option>
+        </select>
+        <label class="graph-smoothing-control">
+            <input type="checkbox" id="movingAverageToggle" onchange="setGraphRange(activeGraphRange)">
+            移動平均
+        </label>
+        <label>平均幅
+            <select id="movingAverageWindow" onchange="setGraphRange(activeGraphRange)">
+                <option value="5">5件</option>
+                <option value="10">10件</option>
+                <option value="20">20件</option>
+            </select>
+        </label>
+        <div class="chart-wrapper">
+            <canvas id="sensorChart"></canvas>
+        </div>
+    </div>
+    </div>
+
+    <div class="feature-block" data-feature="search" id="feature-search">
+        <button class="feature-close-btn" onclick="hideFeature('search')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('search')" title="この機能を復活させる">○</button>
+    <div class="card">
+        <h3>🔍 センサーデータ・スーパー条件検索</h3>
+        <form method="GET" action="/">
+            <input type="text" name="q" id="searchQuery" class="search-box" placeholder="検索条件を入力 (例: name = 端末A, temp >= 25.0)" value="{{ query }}">
+            <label>開始日 <input type="date" name="from" value="{{ date_from }}"></label>
+            <label>終了日 <input type="date" name="to" value="{{ date_to }}"></label>
+            <label>端末
+                <select name="device">
+                    <option value="">すべて</option>
+                    {% for device in device_options %}
+                    <option value="{{ device.id }}" {% if device_filter == device.id|string %}selected{% endif %}>{{ device.name }} ({{ device.id }})</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <input type="hidden" name="count" value="{{ count }}">
+            <button type="submit" class="btn-search">🔍 検索を実行</button>
+            <button type="button" class="btn-clear" onclick="clearSearch()">🔄 条件クリア</button>
+        </form>
+    </div>
+    </div>
+
+    <div class="feature-block" data-feature="statistics" id="feature-statistics">
+        <button class="feature-close-btn" onclick="hideFeature('statistics')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('statistics')" title="この機能を復活させる">○</button>
+        <div class="card">
+            <h3>📊 絞り込み結果の統計</h3>
+            <div class="freshness-controls">
+                <span id="freshnessStatus" data-latest="{{ latest_timestamp }}">最新記録: {{ latest_timestamp or 'データなし' }}</span>
+                <label>自動更新
+                    <select id="autoRefreshSelect" onchange="setAutoRefresh(this.value)">
+                        <option value="0">オフ</option>
+                        <option value="30">30秒</option>
+                        <option value="60">1分</option>
+                        <option value="300">5分</option>
+                    </select>
+                </label>
+                <button type="button" class="btn-clear" onclick="window.location.reload()">今すぐ更新</button>
+            </div>
+            <div class="statistics-grid">
+                {% for key, label in [('temp', '温度'), ('humi', '湿度'), ('co2', 'CO₂'), ('press', '気圧'), ('force', '感圧')] %}
+                <section class="stat-card">
+                    <strong>{{ label }}</strong>
+                    <div>平均: {{ statistics[key].average if statistics[key].average is not none else '—' }}</div>
+                    <div>最低: {{ statistics[key].minimum if statistics[key].minimum is not none else '—' }}</div>
+                    <div>最高: {{ statistics[key].maximum if statistics[key].maximum is not none else '—' }}</div>
+                </section>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="feature-block" data-feature="alerts" id="feature-alerts">
+        <button class="feature-close-btn" onclick="hideFeature('alerts')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('alerts')" title="この機能を復活させる">○</button>
+        <div class="card">
+            <h3>🔔 しきい値アラート</h3>
+            <div class="threshold-controls">
+                <label>温度上限 (℃) <input type="number" step="any" id="threshold-temp" placeholder="無効"></label>
+                <label>湿度上限 (%) <input type="number" step="any" id="threshold-humi" placeholder="無効"></label>
+                <label>CO₂上限 (ppm) <input type="number" step="any" id="threshold-co2" placeholder="無効"></label>
+                <button type="button" class="btn-search" onclick="saveThresholds()">設定を保存</button>
+            </div>
+            <p id="thresholdAlert" role="status" aria-live="polite">しきい値を設定すると最新データを監視します。</p>
+        </div>
+    </div>
+
+    <div class="feature-block" data-feature="quick" id="feature-quick">
+        <button class="feature-close-btn" onclick="hideFeature('quick')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('quick')" title="この機能を復活させる">○</button>
+    <div class="card">
+        <h3>⚡ クイックデータ抽出 & 並び替え</h3>
+        <div style="margin-bottom: 12px;">
+            <strong>対象 of 列:</strong>
+            <select id="targetColSelect" onchange="updateUrlParam('col', this.value)" style="padding: 6px; font-size: 14px;">
+                <option value="temp" {% if target_col == 'temp' %}selected{% endif %}>温度 (Temp)</option>
+                <option value="humi" {% if target_col == 'humi' %}selected{% endif %}>湿度 (Humi)</option>
+                <option value="co2" {% if target_col == 'co2' %}selected{% endif %}>CO2</option>
+                <option value="press" {% if target_col == 'press' %}selected{% endif %}>気圧 (Press)</option>
+                <option value="force" {% if target_col == 'force' %}selected{% endif %}>感圧 (Force)</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <button class="action-btn btn-max" onclick="updateUrlParam('mode', 'max')">抽出: 最大値の行</button>
+            <button class="action-btn btn-min" onclick="updateUrlParam('mode', 'min')">抽出: 最小値の行</button>
+            <button class="action-btn btn-first" onclick="updateUrlParam('mode', 'first')">⏱️ 最初のデータ</button>
+            <button class="action-btn btn-last" onclick="updateUrlParam('mode', 'last')">🔄 最後のデータ</button>
+        </div>
+        <div>
+            <strong>⇅ 並び替え:</strong>
+            <button class="sort-btn btn-s-desc" onclick="updateUrlParam('sort', 'val_desc')">📈 大きい順</button>
+            <button class="sort-btn btn-s-asc" onclick="updateUrlParam('sort', 'val_asc')">📉 小さい順</button>
+            <button class="sort-btn btn-t-asc" onclick="updateUrlParam('sort', 'time_asc')">⏳ 時間の早い順 (古い順)</button>
+            <button class="sort-btn btn-t-desc" onclick="updateUrlParam('sort', 'time_desc')">⏳ 時間の遅い順 (最新順)</button>
+        </div>
+    </div>
+    </div>
+
+    <div class="feature-block" data-feature="download" id="feature-download">
+        <button class="feature-close-btn" onclick="hideFeature('download')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('download')" title="この機能を復活させる">○</button>
+    <div class="card" style="background-color: #eef7ff;">
+        <h3>💾 表示中のデータをブラウザで保存</h3>
+        <button class="btn-download dl-csv" onclick="downloadData('csv')">📥 .CSV で保存</button>
+        <button class="btn-download dl-json" onclick="downloadData('json')">📥 .JSON で保存</button>
+        <button class="btn-download dl-xml" onclick="downloadData('xml')">📥 .XML で保存</button>
+    </div>
+    </div>
+
+    <div class="feature-block" data-feature="columns" id="feature-columns">
+        <button class="feature-close-btn" onclick="hideFeature('columns')" title="この機能を利用者画面から隠す">×</button>
+        <button class="feature-restore-btn" onclick="restoreFeature('columns')" title="この機能を復活させる">○</button>
+        <div class="card">
+            <h3>表示する列</h3>
+            <div class="column-controls">
+                {% for key, label in [('time','日時'),('id','デバイスID'),('name','名前'),('temp','温度'),('humi','湿度'),('co2','CO₂'),('press','気圧'),('force','感圧'),('recorded_by','記録者'),('note','メモ')] %}
+                <label><input type="checkbox" class="column-toggle" data-column="{{ key }}" checked> {{ label }}</label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <h3>📄 データ一覧 ({{ total_len }} 件中 {{ start + 1 if total_len else 0 }}–{{ [start + count, total_len] | min }})</h3>
+    <div class="card">
+        <div class="pagination-controls">
+            <label>1ページの表示件数
+                <select id="pageSizeSelect" onchange="changePageSize(this.value)">
+                    <option value="25" {% if count == 25 %}selected{% endif %}>25</option>
+                    <option value="50" {% if count == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if count == 100 %}selected{% endif %}>100</option>
+                    <option value="250" {% if count == 250 %}selected{% endif %}>250</option>
+                </select>
+            </label>
+            <button type="button" class="btn-clear" onclick="changePage({{ previous_start }})" {% if start == 0 %}disabled{% endif %}>← 前へ</button>
+            <button type="button" class="btn-search" onclick="changePage({{ next_start }})" {% if next_start >= total_len %}disabled{% endif %}>次へ →</button>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th data-column="time">日時</th><th data-column="id">デバイスID</th><th data-column="name">名前</th>
+                <th data-column="temp">温度 (℃)</th><th data-column="humi">湿度 (%)</th><th data-column="co2">CO2 (ppm)</th>
+                <th data-column="press">気圧 (hPa)</th><th data-column="force">感圧</th>
+                <th data-column="recorded_by">記録者</th><th data-column="note">メモ</th>
+                <th class="admin-col" id="adminColHeader" style="display:none;">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr data-row-id="{{ row.row_id }}">
+            <td data-column="time">{{ row.time }}</td><td data-column="id">{{ row.id }}</td><td data-column="name">{{ row.name }}</td>
+            <td data-column="temp">{{ row.temp }}</td><td data-column="humi">{{ row.humi }}</td><td data-column="co2">{{ row.co2 }}</td>
+            <td data-column="press">{{ row.press }}</td><td data-column="force">{{ row.force }}</td>
+            <td data-column="recorded_by">{{ row.recorded_by }}</td><td data-column="note">{{ row.note }}</td>
+            <td class="admin-col" style="display:none;">
+                {% if row.row_id %}
+                <button class="btn-row-edit" onclick="editDataRow(this)">✏️ 編集</button>
+                <button class="btn-row-delete" onclick="deleteDataRow(this)">🗑️ 削除</button>
+                {% endif %}
+            </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        const rawServerData = {{ graph_data | tojson }};
+        const validRows = rawServerData.filter(d => d.time !== "該当データなし");
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentSort = urlParams.get('sort');
+
+        if (currentSort === 'time_desc') {
+            validRows.sort((a, b) => new Date(b.time) - new Date(a.time));
+        } else {
+            validRows.sort((a, b) => new Date(a.time) - new Date(b.time));
+        }
+        
+        const labels = validRows.map(d => d.time);
+        const tempValues = validRows.map(d => parseFloat(d.temp) || null);
+        const humiValues = validRows.map(d => parseFloat(d.humi) || null);
+        const co2Values = validRows.map(d => parseFloat(d.co2) || null);
+        const pressValues = validRows.map(d => parseFloat(d.press) || null);
+        const forceValues = validRows.map(d => parseFloat(d.force) || null);
+
+        const savedGraphStates = JSON.parse(localStorage.getItem('graphVisibilityStates')) || {
+            temp: true, humi: true, co2: true, press: true, force: true
+        };
+        let activeGraphRange = localStorage.getItem('graphRangeHours') || 'all';
+        document.getElementById('graphRangeSelect').value = activeGraphRange;
+
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { id: 'temp', label: '温度 (℃)', data: tempValues, borderColor: '#ff4757', backgroundColor: 'transparent', tension: 0.2, hidden: savedGraphStates.temp },
+                    { id: 'humi', label: '湿度 (%)', data: humiValues, borderColor: '#2ed573', backgroundColor: 'transparent', tension: 0.2, hidden: savedGraphStates.humi },
+                    { id: 'co2',  label: 'CO2 (ppm)', data: co2Values, borderColor: '#ffa502', backgroundColor: 'transparent', tension: 0.2, hidden: savedGraphStates.co2 },
+                    { id: 'press',label: '気圧 (hPa)', data: pressValues, borderColor: '#1e90ff', backgroundColor: 'transparent', tension: 0.2, hidden: savedGraphStates.press },
+                    { id: 'force',label: '感圧', data: forceValues, borderColor: '#6c5ce7', backgroundColor: 'transparent', tension: 0.2, hidden: savedGraphStates.force }
+                ]
+            },
+            options: { 
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        function setGraphRange(hours) {
+            activeGraphRange = hours;
+            localStorage.setItem('graphRangeHours', hours);
+            const cutoff = hours === 'all' ? null : Date.now() - Number(hours) * 60 * 60 * 1000;
+            const rangeRows = validRows.filter(row => !cutoff || new Date(row.time).getTime() >= cutoff);
+            sensorChart.data.labels = rangeRows.map(row => row.time);
+            sensorChart.data.datasets.forEach(dataset => {
+                const rawValues = rangeRows.map(row => {
+                    const value = Number.parseFloat(row[dataset.id]);
+                    return Number.isFinite(value) ? value : null;
+                });
+                const smooth = document.getElementById('movingAverageToggle').checked;
+                const width = Number(document.getElementById('movingAverageWindow').value);
+                dataset.data = rawValues.map((value, index) => {
+                    if (!smooth) return value;
+                    const windowValues = rawValues.slice(Math.max(0, index - width + 1), index + 1).filter(Number.isFinite);
+                    return windowValues.length ? windowValues.reduce((sum, item) => sum + item, 0) / windowValues.length : null;
+                });
+            });
+            sensorChart.update();
+        }
+        setGraphRange(activeGraphRange);
+
+        Object.keys(savedGraphStates).forEach(key => {
+            const button = document.getElementById(`btn-${key}`);
+            if (button) {
+                button.classList.toggle('active', !savedGraphStates[key]);
+            }
+        });
+
+        function toggleDataset(key) {
+            const button = document.getElementById(`btn-${key}`);
+            const dataset = sensorChart.data.datasets.find(d => d.id === key);
+            if (dataset) {
+                dataset.hidden = !dataset.hidden;
+                button.classList.toggle('active', !dataset.hidden);
+                sensorChart.update();
+                
+                savedGraphStates[key] = dataset.hidden;
+                localStorage.setItem('graphVisibilityStates', JSON.stringify(savedGraphStates));
+            }
+        }
+
+        function updateUrlParam(param, value) {
+            const url = new URL(window.location.href);
+            url.searchParams.set(param, value);
+            url.searchParams.set('start', '0');
+            if (param === 'mode') url.searchParams.delete('sort');
+            if (param === 'sort') url.searchParams.delete('mode');
+            window.location.href = url.toString();
+        }
+
+        function clearSearch() { 
+            localStorage.removeItem('graphVisibilityStates');
+            window.location.href = '/'; 
+        }
+
+        function downloadData(formatType) {
+            const url = new URL(window.location.href);
+            window.location.href = `/export${url.search}${url.search ? '&' : '?'}format=${formatType}`;
+        }
+
+        function changePage(start) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('start', String(start));
+            window.location.href = url.toString();
+        }
+
+        function changePageSize(count) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('count', count);
+            url.searchParams.set('start', '0');
+            window.location.href = url.toString();
+        }
+
+        function applyColumnVisibility() {
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem('visibleDataColumns') || '{}'); } catch (error) { saved = {}; }
+            document.querySelectorAll('.column-toggle').forEach(toggle => {
+                const key = toggle.dataset.column;
+                toggle.checked = saved[key] !== false;
+                document.querySelectorAll(`[data-column="${key}"]`).forEach(cell => {
+                    cell.style.display = toggle.checked ? '' : 'none';
+                });
+                toggle.addEventListener('change', () => {
+                    const nextSaved = JSON.parse(localStorage.getItem('visibleDataColumns') || '{}');
+                    nextSaved[key] = toggle.checked;
+                    localStorage.setItem('visibleDataColumns', JSON.stringify(nextSaved));
+                    document.querySelectorAll(`[data-column="${key}"]`).forEach(cell => {
+                        cell.style.display = toggle.checked ? '' : 'none';
+                    });
+                });
+            });
+        }
+        applyColumnVisibility();
+
+        const thresholdFields = ['temp', 'humi', 'co2'];
+        function saveThresholds() {
+            const thresholds = {};
+            thresholdFields.forEach(field => {
+                const value = document.getElementById(`threshold-${field}`).value.trim();
+                if (value !== '' && Number.isFinite(Number(value))) thresholds[field] = Number(value);
+            });
+            localStorage.setItem('sensorThresholds', JSON.stringify(thresholds));
+            updateThresholdAlert();
+        }
+
+        function updateThresholdAlert() {
+            let thresholds = {};
+            try { thresholds = JSON.parse(localStorage.getItem('sensorThresholds') || '{}'); } catch (error) { thresholds = {}; }
+            thresholdFields.forEach(field => {
+                const input = document.getElementById(`threshold-${field}`);
+                input.value = thresholds[field] ?? '';
+            });
+            const latestByField = {};
+            const newestFirstRows = [...validRows].sort((left, right) => new Date(right.time) - new Date(left.time));
+            thresholdFields.forEach(field => {
+                latestByField[field] = newestFirstRows
+                    .find(row => row[field] !== '' && Number.isFinite(Number(row[field])));
+            });
+            const triggered = thresholdFields.filter(field => latestByField[field]
+                && thresholds[field] !== undefined
+                && Number(latestByField[field][field]) > thresholds[field]);
+            const status = document.getElementById('thresholdAlert');
+            if (triggered.length) {
+                const labels = { temp: '温度', humi: '湿度', co2: 'CO₂' };
+                status.textContent = `⚠️ しきい値超過: ${triggered.map(field => `${labels[field]} ${latestByField[field][field]} (${latestByField[field].time})`).join('、')}`;
+                status.style.color = '#c0392b';
+                status.style.fontWeight = 'bold';
+            } else {
+                status.textContent = '最新データは設定したしきい値の範囲内です。';
+                status.style.color = '#247a3d';
+                status.style.fontWeight = 'normal';
+            }
+        }
+        updateThresholdAlert();
+
+        function setAutoRefresh(seconds) {
+            localStorage.setItem('dashboardAutoRefreshSeconds', seconds);
+            scheduleAutoRefresh();
+        }
+
+        function scheduleAutoRefresh() {
+            const seconds = Number(localStorage.getItem('dashboardAutoRefreshSeconds') || 0);
+            const selector = document.getElementById('autoRefreshSelect');
+            selector.value = String(seconds);
+            const freshness = document.getElementById('freshnessStatus');
+            const latestTime = freshness.dataset.latest;
+            if (latestTime) {
+                const ageMinutes = Math.max(0, Math.floor((Date.now() - new Date(latestTime).getTime()) / 60000));
+                freshness.textContent = ageMinutes >= 5
+                    ? `⚠️ 最新記録: ${latestTime}（${ageMinutes}分前）`
+                    : `✅ 最新記録: ${latestTime}（${ageMinutes}分前）`;
+            }
+            if (seconds > 0) {
+                window.setTimeout(() => {
+                    if (document.visibilityState === 'visible') window.location.reload();
+                    else scheduleAutoRefresh();
+                }, seconds * 1000);
+            }
+        }
+        scheduleAutoRefresh();
+
+        // =====================================================
+        // 🔐 管理者モード：機能ブロックの表示/非表示コントロール
+        // =====================================================
+        // パスワードはサーバー側(.env の ADMIN_PASSWORD)でのみ照合します。
+        // このJSにはパスワードそのものを一切書かないため、開発者ツールを見ても分かりません。
+
+        // サーバーが描画時点でのログイン状態を教えてくれる（session Cookieに基づく）
+        let isAdminLoggedIn = {{ 'true' if is_admin else 'false' }};
+        let isAdminView = false;       // 管理者画面(薄く残す) / 利用者画面(完全に消す) の切り替え。再読み込み時は利用者画面から開始
+        let hiddenFeatures = {};
+        try {
+            hiddenFeatures = JSON.parse(localStorage.getItem('hiddenFeatures')) || {};
+        } catch (e) {
+            hiddenFeatures = {};
+        }
+
+        function saveHiddenFeatures() {
+            localStorage.setItem('hiddenFeatures', JSON.stringify(hiddenFeatures));
+        }
+
+        async function handleAdminButtonClick() {
+            if (!isAdminLoggedIn) {
+                const pw = prompt("管理者パスワードを入力してください:");
+                if (pw === null) return; // キャンセル
+
+                try {
+                    const res = await fetch('/admin/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: pw })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.status === 'success') {
+                        isAdminLoggedIn = true;
+                        isAdminView = true;
+                        updateAdminUI();
+                    } else {
+                        alert(data.message || "パスワードが違います。");
+                    }
+                } catch (err) {
+                    alert("通信エラーが発生しました: " + err);
+                }
+            } else {
+                // ログイン済みなら 管理者画面 ⇔ 利用者画面 を切り替える（サーバー通信不要）
+                isAdminView = !isAdminView;
+                updateAdminUI();
+            }
+        }
+
+        async function handleAdminLogoutClick() {
+            try {
+                await fetch('/admin/logout', { method: 'POST' });
+            } catch (err) {
+                // ログアウト通信に失敗してもクライアント側の状態はリセットする
+            }
+            isAdminLoggedIn = false;
+            isAdminView = false;
+            // 💡 最初のパスワード入力ゲートを一度突破していれば、ログアウト後も
+            //    「🔐 管理者ボタン」自体は表示したままにする（再ログイン用）。
+            //    ボタンを押せば再度パスワード入力が求められ、正しくなければ管理者権限は付与されない。
+            updateAdminUI();
+        }
+
+        function hideFeature(key) {
+            hiddenFeatures[key] = true;
+            saveHiddenFeatures();
+            updateAdminUI();
+        }
+
+        function restoreFeature(key) {
+            hiddenFeatures[key] = false;
+            saveHiddenFeatures();
+            updateAdminUI();
+        }
+
+        function updateAdminUI() {
+            const btn = document.getElementById('adminToggleBtn');
+            const logoutBtn = document.getElementById('adminLogoutBtn');
+            const statusLabel = document.getElementById('adminStatusLabel');
+
+            if (!isAdminLoggedIn) {
+                btn.textContent = "🔐 管理者ボタン";
+                btn.classList.remove('is-editing');
+                logoutBtn.style.display = 'none';
+                statusLabel.textContent = "";
+            } else if (isAdminView) {
+                btn.textContent = "👤 利用者画面に戻す";
+                btn.classList.add('is-editing');
+                logoutBtn.style.display = 'inline-block';
+                statusLabel.textContent = "🛠️ 管理者編集モード（薄い項目は利用者には非表示）";
+            } else {
+                btn.textContent = "🛠️ 管理者画面に切替";
+                btn.classList.remove('is-editing');
+                logoutBtn.style.display = 'inline-block';
+                statusLabel.textContent = "";
+            }
+
+            document.querySelectorAll('.feature-block').forEach(block => {
+                const key = block.dataset.feature;
+                const hidden = !!hiddenFeatures[key];
+
+                block.classList.remove('admin-dimmed', 'user-hidden', 'show-close-btn', 'show-restore-btn');
+
+                if (isAdminLoggedIn && isAdminView) {
+                    // 管理者編集モード：非表示指定の項目も薄く残して表示
+                    if (hidden) {
+                        block.classList.add('admin-dimmed', 'show-restore-btn');
+                    } else {
+                        block.classList.add('show-close-btn');
+                    }
+                } else {
+                    // 利用者モード（または未ログイン）：非表示指定の項目は完全に消して詰める
+                    if (hidden) {
+                        block.classList.add('user-hidden');
+                    }
+                }
+            });
+
+            // 💡 データ一覧の「編集・削除」列は、管理者としてログイン済み かつ 管理者編集モードの時だけ表示する
+            document.querySelectorAll('.admin-col').forEach(el => {
+                el.style.display = (isAdminLoggedIn && isAdminView) ? '' : 'none';
+            });
+        }
+
+        // 初期表示反映
+        updateAdminUI();
+
+        // =====================================================
+        // 🔐 ホームページを開いた際のパスワード入力ゲート
+        // =====================================================
+        // ・パスワードが正しい場合のみ、管理者ボタンをページ表示後に出現させる
+        // ・パスワードが違う場合（またはキャンセルした場合）は、管理者ボタンは表示されない
+        // ・すでに管理者としてログイン済み（セッションが有効）な場合は再入力せずそのまま表示する
+        (async function initAdminAccessGate() {
+            const adminBtn = document.getElementById('adminToggleBtn');
+
+            if (isAdminLoggedIn) {
+                // 既に管理者ログイン済みセッションが有効な場合はそのままボタンを表示
+                adminBtn.style.display = 'inline-block';
+                updateAdminUI();
+                return;
+            }
+
+            const pw = prompt("管理者パスワードを入力してください。\n（管理者でない場合はキャンセルしてください）");
+            if (pw === null || pw === "") {
+                // キャンセル・未入力 → 管理者ボタンは表示しない
+                return;
+            }
+
+            try {
+                const res = await fetch('/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    isAdminLoggedIn = true;
+                    adminBtn.style.display = 'inline-block';
+                    updateAdminUI();
+                }
+                // パスワードが違う場合は何も表示せず、通常の利用者画面のまま
+            } catch (err) {
+                // 通信エラー時も安全側に倒して管理者ボタンは表示しない
+            }
+        })();
+
+        // =====================================================
+        // 🗑️✏️ 管理者専用：データ一覧の特定の行を削除・書き換え
+        // =====================================================
+        function deleteDataRow(btnEl) {
+            const tr = btnEl.closest('tr');
+            const rowId = tr.getAttribute('data-row-id');
+            if (!rowId) return;
+            if (!confirm('このデータを削除します。よろしいですか？（元に戻せません）')) return;
+
+            fetch('/admin/delete_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ row_id: rowId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.reload();
+                } else {
+                    alert('削除エラー: ' + data.message);
+                }
+            })
+            .catch(err => alert('通信エラーが発生しました: ' + err));
+        }
+
+        function editDataRow(btnEl) {
+            const tr = btnEl.closest('tr');
+            const rowId = tr.getAttribute('data-row-id');
+            if (!rowId) return;
+
+            const cells = tr.querySelectorAll('td');
+            // 列の並び: 0=日時, 1=デバイスID, 2=名前, 3=温度, 4=湿度, 5=CO2, 6=気圧, 7=感圧
+            const currentName = cells[2].textContent.trim();
+            const currentTemp = cells[3].textContent.trim();
+            const currentHumi = cells[4].textContent.trim();
+            const currentCo2 = cells[5].textContent.trim();
+            const currentPress = cells[6].textContent.trim();
+            const currentForce = cells[7].textContent.trim();
+
+            const newName = prompt('名前を入力してください（空欄可・変更しない場合はそのままOK）:', currentName);
+            if (newName === null) return;
+            const newTemp = prompt('温度 (℃) を入力してください（空欄可）:', currentTemp);
+            if (newTemp === null) return;
+            const newHumi = prompt('湿度 (%) を入力してください（空欄可）:', currentHumi);
+            if (newHumi === null) return;
+            const newCo2 = prompt('CO2 (ppm) を入力してください（空欄可）:', currentCo2);
+            if (newCo2 === null) return;
+            const newPress = prompt('気圧 (hPa) を入力してください（空欄可）:', currentPress);
+            if (newPress === null) return;
+            const newForce = prompt('感圧 を入力してください（空欄可）:', currentForce);
+            if (newForce === null) return;
+
+            const fields = {
+                name: newName.trim(),
+                temp: newTemp.trim(),
+                humi: newHumi.trim(),
+                co2: newCo2.trim(),
+                press: newPress.trim(),
+                force: newForce.trim()
+            };
+
+            fetch('/admin/update_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ row_id: rowId, fields: fields })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.reload();
+                } else {
+                    alert('更新エラー: ' + data.message);
+                }
+            })
+            .catch(err => alert('通信エラーが発生しました: ' + err));
+        }
+
+        // =====================================================
+        // 🧪 手動データ入力：チェックボックスの選択数に応じて入力欄を動的生成
+        // =====================================================
+
+        // 数値（整数・小数・先頭の-のみ）以外の文字を取り除く
+        function sanitizeNumericString(str) {
+            if (!str) return '';
+            let s = str.replace(/[^0-9.\-]/g, ''); // 数字・ドット・マイナス以外を除去
+
+            // マイナスは先頭に1つだけ許可
+            const isNegative = s.startsWith('-');
+            s = s.replace(/-/g, '');
+            if (isNegative) s = '-' + s;
+
+            // 小数点は1つだけ許可（2つ目以降は結合して除去）
+            const dotIndex = s.indexOf('.');
+            if (dotIndex !== -1) {
+                s = s.slice(0, dotIndex + 1) + s.slice(dotIndex + 1).replace(/\./g, '');
+            }
+            return s;
+        }
+
+        function sanitizeInputElement(inputEl) {
+            const cleaned = sanitizeNumericString(inputEl.value);
+            if (cleaned !== inputEl.value) {
+                const cursorFromEnd = inputEl.value.length - inputEl.selectionEnd;
+                inputEl.value = cleaned;
+                const newPos = Math.max(0, cleaned.length - cursorFromEnd);
+                inputEl.setSelectionRange(newPos, newPos);
+            }
+        }
+
+        function renderManualValueInputs() {
+            const container = document.getElementById('manualValueInputsContainer');
+            const checkedBoxes = Array.from(document.querySelectorAll('.manualFieldCheck:checked'));
+
+            // 再描画前に入力済みの値を保持しておく（他のチェックを切り替えても消えないように）
+            const existingValues = {};
+            container.querySelectorAll('input[data-field]').forEach(inp => {
+                existingValues[inp.dataset.field] = inp.value;
+            });
+
+            container.innerHTML = '';
+
+            if (checkedBoxes.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'manual-value-empty';
+                empty.textContent = '上で入力する分野を1つ以上選択してください。';
+                container.appendChild(empty);
+                return;
+            }
+
+            checkedBoxes.forEach(cb => {
+                const field = cb.value;
+                const item = document.createElement('div');
+                item.className = 'manual-value-item';
+
+                const lab = document.createElement('label');
+                lab.textContent = cb.dataset.label;
+                item.appendChild(lab);
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.dataset.field = field;
+                input.placeholder = '例: 26.5';
+                input.value = existingValues[field] || '';
+                input.addEventListener('input', () => {
+                    sanitizeInputElement(input);
+                    input.classList.remove('input-error');
+                });
+                item.appendChild(input);
+
+                if (cb.dataset.unit) {
+                    const unitSpan = document.createElement('span');
+                    unitSpan.className = 'unit-label';
+                    unitSpan.textContent = cb.dataset.unit;
+                    item.appendChild(unitSpan);
+                }
+
+                container.appendChild(item);
+            });
+        }
+
+        document.querySelectorAll('.manualFieldCheck').forEach(cb => {
+            cb.addEventListener('change', renderManualValueInputs);
+        });
+        renderManualValueInputs(); // 初期表示（デフォルトで温度がチェック済みのため1つ表示される）
+
+        function submitManualData() {
+            const checkedBoxes = Array.from(document.querySelectorAll('.manualFieldCheck:checked'));
+            if (checkedBoxes.length === 0) {
+                alert("追加する分野を1つ以上選択してください。");
+                return;
+            }
+
+            const container = document.getElementById('manualValueInputsContainer');
+            const fields = {};
+            const missingLabels = [];
+
+            for (const cb of checkedBoxes) {
+                const field = cb.value;
+                const input = container.querySelector(`input[data-field="${field}"]`);
+                const val = input ? sanitizeNumericString(input.value.trim()) : '';
+                if (!val) {
+                    missingLabels.push(cb.dataset.label);
+                    if (input) input.classList.add('input-error');
+                } else {
+                    if (input) input.classList.remove('input-error');
+                    fields[field] = val;
+                }
+            }
+
+            if (missingLabels.length > 0) {
+                alert(`次の項目の数値が未入力です:\n${missingLabels.join('\n')}`);
+                return;
+            }
+
+            fetch('/add_manual_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fields,
+                    recorded_by: document.getElementById('manualRecordedBy').value,
+                    note: document.getElementById('manualNote').value
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "success") {
+                    alert(data.message);
+                    container.querySelectorAll('input[data-field]').forEach(inp => inp.value = "");
+                    document.getElementById('manualNote').value = '';
+                    window.location.reload();
+                } else {
+                    alert("エラー: " + data.message);
+                }
+            })
+            .catch(err => {
+                alert("通信エラーが発生しました: " + err);
+            });
+        }
+    </script>
+</body>
+</html>
